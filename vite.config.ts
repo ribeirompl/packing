@@ -11,7 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt', 'icons/*.png'],
+      includeAssets: ['favicon.svg', 'robots.txt'],
       manifest: {
         name: 'Packing Checklist',
         short_name: 'PackList',
