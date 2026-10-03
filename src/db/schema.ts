@@ -1,9 +1,8 @@
 import Dexie, { type EntityTable } from 'dexie';
-import { upgradeToV3 } from './migrations';
 import type { Checklist, ChecklistItem, ItemTemplate, Category, Preference } from '@/types';
 
 /**
- * PackingDB: Dexie.js database class with versioned schema
+ * PackingDB: Dexie.js database class
  */
 export class PackingDB extends Dexie {
   checklists!: EntityTable<Checklist, 'id'>;
@@ -13,26 +12,15 @@ export class PackingDB extends Dexie {
   preferences!: EntityTable<Preference, 'id'>;
 
   constructor() {
-    super('PackingDB');
+    super('PackingChecklist');
 
-    // Version 1: Initial schema
     this.version(1).stores({
       checklists: '++id, created_at',
-      checklist_items: '++id, checklist_id, category_id, checked',
-      item_templates: '++id, category_id, enabled',
+      checklist_items: '++id, checklist_id, category_id, [checklist_id+category_id]',
+      item_templates: '++id, category_id',
       categories: '++id, sort_order',
       preferences: '++id',
     });
-
-    // Version 2: Compound index for per-category queries within a checklist
-    this.version(2).stores({
-      checklist_items: '++id, checklist_id, category_id, checked, [checklist_id+category_id]',
-    });
-
-    // Version 3: Per-item quantity rules, trip tags and pack phases (see migrations.ts)
-    this.version(3)
-      .stores({})
-      .upgrade((tx) => upgradeToV3(tx));
   }
 }
 

@@ -1,11 +1,5 @@
 import type { PackPhase, QuantityRule, TripTag } from '@/types';
 
-/**
- * Default categories and item templates. Seeded on first run and merged (by name) into
- * existing databases when CATALOG_VERSION increases.
- */
-export const CATALOG_VERSION = 2;
-
 export interface CatalogItem {
   name: string;
   quantity: QuantityRule;
@@ -31,6 +25,7 @@ const everyNDays = (n: number, min?: number, max?: number): QuantityRule => ({
   ...(max !== undefined && { max }),
 });
 
+/** Default categories and item templates, seeded on first run */
 export const DEFAULT_CATALOG: CatalogCategory[] = [
   {
     name: 'Clothes',
@@ -202,13 +197,3 @@ export const DEFAULT_CATALOG: CatalogCategory[] = [
     ],
   },
 ];
-
-/** Case-insensitive lookup of a catalog item by name */
-export function findCatalogItem(name: string): CatalogItem | undefined {
-  const key = name.trim().toLowerCase();
-  for (const category of DEFAULT_CATALOG) {
-    const item = category.items.find((i) => i.name.toLowerCase() === key);
-    if (item) return item;
-  }
-  return undefined;
-}

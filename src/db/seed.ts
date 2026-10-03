@@ -1,73 +1,53 @@
 import type { ItemTemplate, Preference } from '@/types';
-import { CATALOG_VERSION, DEFAULT_CATALOG } from './catalog';
+import { DEFAULT_CATALOG } from './catalog';
 import { db } from './schema';
 
 /**
- * Seed default categories, items and preferences on first run, and merge in catalog
- * additions (matched by name, case-insensitively) when CATALOG_VERSION increases.
- * Existing categories and items, including user edits, are never modified.
+ * Seed default categories, items and preferences when the database has no categories
+ * (first run, or after "Reset to defaults" clears them)
  */
 export async function seedDefaultData(): Promise<void> {
   await db.transaction('rw', db.categories, db.item_templates, db.preferences, async () => {
-    const preferences = await db.preferences.get(1);
-    if ((preferences?.catalog_version ?? 0) >= CATALOG_VERSION) {
+    if ((await db.categories.count()) > 0) {
       return;
     }
 
-    const categories = await db.categories.toArray();
-    const templates = await db.item_templates.toArray();
-    const templateNames = new Set(templates.map((t) => t.name.toLowerCase()));
-    const categoryDefaults: Record<number, boolean> = { ...preferences?.category_defaults };
-    let nextCategoryOrder = Math.max(0, ...categories.map((c) => c.sort_order)) + 1;
+    const categoryDefaults: Record<number, boolean> = {};
+    const categoryIds: number[] = [];
 
-    for (const catalogCategory of DEFAULT_CATALOG) {
-      let category = categories.find(
-        (c) => c.name.toLowerCase() === catalogCategory.name.toLowerCase()
-      );
-      if (!category) {
-        const newCategory = {
-          name: catalogCategory.name,
-          icon: catalogCategory.icon,
-          default_included: catalogCategory.default_included,
-          sort_order: nextCategoryOrder++,
-        };
-        const id = (await db.categories.add(newCategory)) as number;
-        category = { ...newCategory, id };
-        categories.push(category);
-        categoryDefaults[id] = catalogCategory.default_included;
-      }
+    for (const [index, catalogCategory] of DEFAULT_CATALOG.entries()) {
+      const categoryId = (await db.categories.add({
+        name: catalogCategory.name,
+        icon: catalogCategory.icon,
+        default_included: catalogCategory.default_included,
+        sort_order: index + 1,
+      })) as number;
+      categoryIds.push(categoryId);
+      categoryDefaults[categoryId] = catalogCategory.default_included;
 
-      const categoryId = category.id!;
-      let nextItemOrder =
-        Math.max(
-          0,
-          ...templates.filter((t) => t.category_id === categoryId).map((t) => t.sort_order)
-        ) + 1;
-      const newTemplates: Omit<ItemTemplate, 'id'>[] = catalogCategory.items
-        .filter((item) => !templateNames.has(item.name.toLowerCase()))
-        .map((item) => ({
-          name: item.name,
-          category_id: categoryId,
-          enabled: item.enabled ?? true,
-          tags: item.tags ?? [],
-          quantity: item.quantity,
-          phase: item.phase ?? 'ahead',
-          sort_order: nextItemOrder++,
-        }));
-      await db.item_templates.bulkAdd(newTemplates);
+      const templates: Omit<ItemTemplate, 'id'>[] = catalogCategory.items.map((item, i) => ({
+        name: item.name,
+        category_id: categoryId,
+        enabled: item.enabled ?? true,
+        tags: item.tags ?? [],
+        quantity: item.quantity,
+        phase: item.phase ?? 'ahead',
+        sort_order: i + 1,
+      }));
+      await db.item_templates.bulkAdd(templates);
     }
 
-    const updated: Preference = {
+    // Keep existing preferences (e.g. spare day settings) when re-seeding after a reset
+    const existing = await db.preferences.get(1);
+    const preferences: Preference = {
       buffer_days_ratio: 7,
       min_buffer_days: 1,
-      preferred_categories: [],
       welcome_seen: false,
-      ...preferences,
+      ...existing,
       category_defaults: categoryDefaults,
-      catalog_version: CATALOG_VERSION,
+      preferred_categories: categoryIds,
       id: 1,
     };
-    updated.preferred_categories = categories.map((c) => c.id!);
-    await db.preferences.put(updated);
+    await db.preferences.put(preferences);
   });
 }

@@ -111,7 +111,6 @@ export interface Preference {
   category_defaults: Record<number, boolean>;
   preferred_categories: number[];
   welcome_seen?: boolean; // First-visit flag
-  catalog_version?: number; // Version of the default item catalog merged into this database
 }
 
 // Domain-specific types

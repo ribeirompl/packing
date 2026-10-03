@@ -283,14 +283,9 @@ export class CategoryService {
    */
   async resetToDefaults(): Promise<Result<void, Error>> {
     try {
-      // Delete all custom categories and items, and force a full re-seed
+      // Delete all categories and items; seeding then restores the defaults
       await db.item_templates.clear();
       await db.categories.clear();
-      await db.preferences.update(1, {
-        catalog_version: 0,
-        category_defaults: {},
-        preferred_categories: [],
-      });
 
       // Re-seed
       const { seedDefaultData } = await import('@/db/seed');
