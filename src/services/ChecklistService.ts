@@ -453,11 +453,11 @@ export class ChecklistService {
       errors.push({ field: 'spare_days', message: 'Spare days cannot be negative' });
     }
 
-    if (input.washing_machine_available && input.max_days_before_washing) {
-      if (input.max_days_before_washing < 1 || input.max_days_before_washing > 14) {
+    if (input.washing_machine_available && input.max_days_before_washing !== undefined) {
+      if (!Number.isInteger(input.max_days_before_washing) || input.max_days_before_washing < 1) {
         errors.push({
           field: 'max_days_before_washing',
-          message: 'Max days before washing must be between 1 and 14',
+          message: 'Max days before washing must be a whole number of at least 1',
         });
       }
     }

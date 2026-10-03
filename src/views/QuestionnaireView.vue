@@ -29,24 +29,14 @@
       <form class="bg-white rounded-lg shadow-md p-6 space-y-8" @submit.prevent="handleSubmit">
         <!-- Trip Dates -->
         <section class="space-y-2">
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <BaseInput
-              id="start-date"
-              v-model="form.start_date"
-              type="date"
-              label="Start Date"
-              required
-              :error="errors.start_date"
-            />
-            <BaseInput
-              id="end-date"
-              v-model="form.end_date"
-              type="date"
-              label="End Date"
-              required
-              :error="errors.end_date"
-            />
-          </div>
+          <DateRangePicker
+            id="trip-dates"
+            v-model:start="form.start_date"
+            v-model:end="form.end_date"
+            label="Trip dates"
+            required
+            :error="errors.start_date || errors.end_date"
+          />
           <p v-if="tripDays > 0" class="text-sm text-gray-500">
             {{ tripDays }}-day trip (start and end days included)
           </p>
@@ -123,9 +113,8 @@
               v-model="form.max_days_before_washing"
               type="number"
               label="Wash every N days"
-              hint="Clothes are packed to last this many days (1–14)"
+              hint="Clothes are packed to last this many days"
               :min="1"
-              :max="14"
               :error="errors.max_days_before_washing"
             />
           </div>
@@ -243,6 +232,7 @@ import BaseInput from '@/components/common/BaseInput.vue';
 import BaseButton from '@/components/common/BaseButton.vue';
 import BaseCheckbox from '@/components/common/BaseCheckbox.vue';
 import BaseModal from '@/components/common/BaseModal.vue';
+import DateRangePicker from '@/components/common/DateRangePicker.vue';
 import ChipToggle from '@/components/common/ChipToggle.vue';
 import { useChecklist } from '@/composables/useChecklist';
 import { useCategoryManager } from '@/composables/useCategoryManager';
@@ -380,7 +370,7 @@ function validateForm(): boolean {
   });
 
   if (!form.start_date) {
-    errors.start_date = 'Start date is required';
+    errors.start_date = 'Trip dates are required';
     isValid = false;
   }
 
@@ -401,8 +391,8 @@ function validateForm(): boolean {
 
   if (form.washing_machine_available) {
     const days = form.max_days_before_washing;
-    if (!Number.isInteger(days) || days < 1 || days > 14) {
-      errors.max_days_before_washing = 'Must be a whole number between 1 and 14';
+    if (!Number.isInteger(days) || days < 1) {
+      errors.max_days_before_washing = 'Must be a whole number of at least 1';
       isValid = false;
     }
   }
