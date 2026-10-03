@@ -271,6 +271,7 @@ import { useRouter } from 'vue-router';
 import { addDays, format as formatDate } from 'date-fns';
 import BaseInput from '@/components/common/BaseInput.vue';
 import BaseButton from '@/components/common/BaseButton.vue';
+import BaseCheckbox from '@/components/common/BaseCheckbox.vue';
 import { useChecklist } from '@/composables/useChecklist';
 import { useCategoryManager } from '@/composables/useCategoryManager';
 import { usePerDayCalculator } from '@/composables/usePerDayCalculator';
