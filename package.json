@@ -8,9 +8,8 @@
     "dev": "vite",
     "build": "npm run type-check && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "test:unit": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed",
     "type-check": "vue-tsc --noEmit && tsc -p tsconfig.node.json",
     "lint": "eslint . --fix",
     "format": "prettier --write src/"
@@ -26,7 +25,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.20.5",
     "@vitejs/plugin-vue": "^6.0.9",
@@ -52,7 +50,7 @@
     "workbox-window": "^7.4.1"
   },
   "engines": {
-    "node": ">=20.0.0",
+    "node": "^22.22.0 || >=24.15.0",
     "npm": ">=10.0.0"
   }
 }

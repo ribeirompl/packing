@@ -11,7 +11,6 @@ export default tseslint.config(
       'dist/',
       'dev-dist/',
       'coverage/',
-      'playwright-report/',
       'specs/',
       '.specify/',
     ],
