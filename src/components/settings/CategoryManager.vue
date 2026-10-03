@@ -21,14 +21,6 @@
           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           required
         />
-        <select
-          v-model="newCategory.type"
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-          required
-        >
-          <option value="daily">Daily</option>
-          <option value="singular">Singular</option>
-        </select>
         <div class="flex gap-2">
           <button
             type="submit"
@@ -90,6 +82,7 @@ import { useCategories } from '../../composables/useCategories';
 import { db } from '@/db/schema';
 import type { Category, ItemTemplate } from '@/types';
 import CategoryItem from './CategoryItem.vue';
+import { useToast } from '@/composables/useToast';
 
 const {
   getAllCategories,
@@ -102,6 +95,7 @@ const {
   toggleItemEnabled,
   resetToDefaults,
 } = useCategories();
+const { showError } = useToast();
 
 type CategoryWithItems = Category & { items: ItemTemplate[] };
 
@@ -110,7 +104,6 @@ const loading = ref(false);
 const showAddCategory = ref(false);
 const newCategory = ref({
   name: '',
-  type: 'daily' as 'daily' | 'singular',
   default_included: true,
   sort_order: 0,
 });
@@ -126,7 +119,10 @@ async function loadCategories() {
     // Fetch items for each category
     const categoriesWithItems = await Promise.all(
       result.data.map(async (category) => {
-        const items = await db.item_templates.where('category_id').equals(category.id!).toArray();
+        const items = await db.item_templates
+          .where('category_id')
+          .equals(category.id!)
+          .sortBy('sort_order');
         return { ...category, items };
       })
     );
@@ -141,7 +137,6 @@ async function handleAddCategory() {
   const maxSortOrder = categories.value.reduce((max, cat) => Math.max(max, cat.sort_order), 0);
   const categoryData: Omit<Category, 'id'> = {
     name: newCategory.value.name.trim(),
-    type: newCategory.value.type,
     default_included: true,
     sort_order: maxSortOrder + 1,
   };
@@ -157,7 +152,6 @@ function cancelAddCategory() {
   showAddCategory.value = false;
   newCategory.value = {
     name: '',
-    type: 'daily',
     default_included: true,
     sort_order: 0,
   };
@@ -176,7 +170,8 @@ async function handleDeleteCategory(categoryId: number) {
 }
 
 async function handleAddItem(categoryId: number, itemName: string) {
-  await addItemToCategory(categoryId, itemName);
+  const result = await addItemToCategory(categoryId, itemName);
+  if (!result.success) showError(result.error.message);
   await loadCategories();
 }
 
@@ -184,7 +179,8 @@ async function handleUpdateItem(
   itemId: number,
   updates: Partial<Omit<ItemTemplate, 'id' | 'category_id'>>
 ) {
-  await updateItemInCategory(itemId, updates);
+  const result = await updateItemInCategory(itemId, updates);
+  if (!result.success) showError(result.error.message);
   await loadCategories();
 }
 

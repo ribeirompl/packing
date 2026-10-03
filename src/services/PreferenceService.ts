@@ -27,7 +27,7 @@ export class PreferenceService {
           welcome_seen: false,
         };
 
-        await db.preferences.add(defaultPreferences);
+        await db.preferences.put({ ...defaultPreferences, id: 1 });
         preferences = await db.preferences.get(1);
       }
 
@@ -187,7 +187,7 @@ export class PreferenceService {
       if (preferences.buffer_days_ratio < 1) {
         errors.push({
           field: 'buffer_days_ratio',
-          message: 'Buffer days ratio must be at least 1',
+          message: 'Spare day ratio must be at least 1',
         });
       }
     }
@@ -196,7 +196,7 @@ export class PreferenceService {
       if (preferences.min_buffer_days < 0) {
         errors.push({
           field: 'min_buffer_days',
-          message: 'Minimum buffer days cannot be negative',
+          message: 'Minimum spare days cannot be negative',
         });
       }
     }

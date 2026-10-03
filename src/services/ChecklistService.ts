@@ -3,15 +3,27 @@ import { useChecklistStore } from '@/stores/checklist';
 import { usePerDayCalculator } from '@/composables/usePerDayCalculator';
 import { format, parseISO } from 'date-fns';
 import type {
+  Category,
   Checklist,
   ChecklistItem,
+  ChecklistSnapshot,
   QuestionnaireInput,
   ChecklistWithItems,
-  DayBreakdown,
   CategorySummary,
+  ItemTemplate,
+  PackPhase,
   Result,
+  TripTag,
   ValidationError,
 } from '@/types';
+
+function toError(error: unknown, fallback: string): Error {
+  return error instanceof Error ? error : new Error(fallback);
+}
+
+function checklistTitle(startDate: string, endDate: string): string {
+  return `${format(parseISO(startDate), 'MMM d')} - ${format(parseISO(endDate), 'MMM d, yyyy')}`;
+}
 
 export class ChecklistService {
   /**
@@ -27,116 +39,81 @@ export class ChecklistService {
 
     try {
       const calculator = usePerDayCalculator();
-      const tripDays = calculator.calculateTripDuration(input.start_date, input.end_date);
+      const quantityContext = {
+        tripDays: calculator.calculateTripDuration(input.start_date, input.end_date),
+        spareDays: input.spare_days,
+        washingMachineAvailable: input.washing_machine_available,
+        maxDaysBeforeWashing: input.max_days_before_washing,
+      };
+      // Washing availability is also a tag so items like a laundry kit can depend on it
+      // filter() copies, so a reactive (proxied) array from a form is never written to IndexedDB
+      const tags: TripTag[] = input.tags.filter((t) => t !== 'laundry');
+      if (input.washing_machine_available) tags.push('laundry');
 
-      // Delete existing checklist (singleton pattern)
-      await this.clearCurrentChecklist();
-
-      // Load selected categories and enabled item templates
       const categories = await db.categories.where('id').anyOf(input.selected_categories).toArray();
-      const itemTemplates = await db.item_templates
+      categories.sort((a, b) => a.sort_order - b.sort_order);
+      const templates = await db.item_templates
         .where('category_id')
         .anyOf(input.selected_categories)
-        .filter((tmpl) => tmpl.enabled)
+        .filter(
+          (t) => t.enabled && (t.tags.length === 0 || t.tags.some((tag) => tags.includes(tag)))
+        )
         .toArray();
 
-      // Create checklist
       const checklist: Omit<Checklist, 'id'> = {
-        title: `${format(parseISO(input.start_date), 'MMM d')} - ${format(parseISO(input.end_date), 'MMM d, yyyy')}`,
+        title: checklistTitle(input.start_date, input.end_date),
         start_date: input.start_date,
         end_date: input.end_date,
-        buffer_days: input.buffer_days,
-        formal_attire: input.formal_attire,
-        swimming: input.swimming,
-        hot_weather: input.hot_weather,
+        spare_days: input.spare_days,
+        tags,
         washing_machine_available: input.washing_machine_available,
         max_days_before_washing: input.max_days_before_washing,
         created_at: new Date().toISOString(),
       };
 
-      const checklistId = await db.checklists.add(checklist);
+      const categoryOrder = new Map(categories.map((c, i) => [c.id!, i]));
+      templates.sort(
+        (a, b) =>
+          categoryOrder.get(a.category_id)! - categoryOrder.get(b.category_id)! ||
+          a.sort_order - b.sort_order
+      );
 
-      // Generate checklist item instances
-      const checklistItems: Omit<ChecklistItem, 'id'>[] = [];
-      const totalDays = tripDays + input.buffer_days;
+      const checklistId = await db.transaction(
+        'rw',
+        db.checklists,
+        db.checklist_items,
+        async () => {
+          await db.checklist_items.clear();
+          await db.checklists.clear();
+          const id = (await db.checklists.add(checklist)) as number;
 
-      for (const template of itemTemplates) {
-        const category = categories.find((c) => c.id === template.category_id);
-        if (!category) continue;
-
-        // Apply conditional rules for all items
-        if (template.name.toLowerCase().includes('formal') && !input.formal_attire) continue;
-        if (template.name.toLowerCase().includes('swim') && !input.swimming) continue;
-        if (template.name.toLowerCase().includes('short') && !input.hot_weather) continue;
-        if (template.name.toLowerCase().includes('sunscreen') && !input.hot_weather) continue;
-
-        if (category.type === 'daily') {
-          // Create one item per day for daily items
-          const itemsPerDay = calculator.calculateDailyQuantity(
-            tripDays,
-            input.buffer_days,
-            input.washing_machine_available,
-            input.max_days_before_washing
-          );
-
-          // Spread items across days (distribute evenly if washing machine available)
-          const daysToUse =
-            input.washing_machine_available && input.max_days_before_washing
-              ? Math.min(input.max_days_before_washing, totalDays)
-              : totalDays;
-
-          for (let day = 1; day <= daysToUse; day++) {
-            checklistItems.push({
-              checklist_id: checklistId as number,
+          const items: Omit<ChecklistItem, 'id'>[] = [];
+          for (const template of templates) {
+            const quantity = calculator.calculateQuantity(template.quantity, quantityContext);
+            if (quantity <= 0) continue;
+            items.push({
+              checklist_id: id,
               name: template.name,
-              category_name: category.name,
+              category_name: categories.find((c) => c.id === template.category_id)!.name,
               category_id: template.category_id,
-              quantity: Math.ceil(itemsPerDay / daysToUse),
-              day: day,
+              quantity,
+              phase: template.phase,
               checked: false,
+              sort_order: items.length + 1,
             });
           }
-        } else {
-          // Singular items - create one item without a day
-          checklistItems.push({
-            checklist_id: checklistId as number,
-            name: template.name,
-            category_name: category.name,
-            category_id: template.category_id,
-            quantity: 1,
-            checked: false,
-          });
+          await db.checklist_items.bulkAdd(items);
+          return id;
         }
-      }
+      );
 
-      await db.checklist_items.bulkAdd(checklistItems);
-
-      // Update store
-      const store = useChecklistStore();
-      const items = await db.checklist_items
-        .where('checklist_id')
-        .equals(checklistId as number)
-        .toArray();
-      store.setChecklist({
-        checklist: { ...checklist, id: checklistId as number },
-        items,
-        categories,
-      });
-
-      return {
-        success: true,
-        data: {
-          checklist: { ...checklist, id: checklistId as number },
-          items,
-          categories,
-        },
-      };
+      return { success: true, data: await this.loadChecklist(checklistId) };
     } catch (error) {
       return {
         success: false,
         error: {
           field: 'general',
-          message: error instanceof Error ? error.message : 'Failed to generate checklist',
+          message: toError(error, 'Failed to generate checklist').message,
         },
       };
     }
@@ -151,23 +128,9 @@ export class ChecklistService {
       if (!checklist) {
         return { success: true, data: null };
       }
-
-      const items = await db.checklist_items.where('checklist_id').equals(checklist.id!).toArray();
-      const categoryIds = [...new Set(items.map((i) => i.category_id))];
-      const categories = await db.categories.where('id').anyOf(categoryIds).toArray();
-
-      const data: ChecklistWithItems = { checklist, items, categories };
-
-      // Update store
-      const store = useChecklistStore();
-      store.setChecklist(data);
-
-      return { success: true, data };
+      return { success: true, data: await this.loadChecklist(checklist.id!) };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error : new Error('Failed to load checklist'),
-      };
+      return { success: false, error: toError(error, 'Failed to load checklist') };
     }
   }
 
@@ -175,24 +138,89 @@ export class ChecklistService {
    * Update item checked state
    */
   async updateItemChecked(itemId: number, checked: boolean): Promise<Result<ChecklistItem, Error>> {
-    try {
-      await db.checklist_items.update(itemId, { checked });
-      const item = await db.checklist_items.get(itemId);
+    return this.updateItem(itemId, { checked });
+  }
 
-      if (!item) {
-        return { success: false, error: new Error('Item not found') };
+  /**
+   * Set an item's quantity (must be at least 1)
+   */
+  async updateItemQuantity(
+    itemId: number,
+    quantity: number
+  ): Promise<Result<ChecklistItem, Error>> {
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return { success: false, error: new Error('Quantity must be a whole number of at least 1') };
+    }
+    return this.updateItem(itemId, { quantity });
+  }
+
+  /**
+   * Add a one-off item to the current checklist (not saved as a template)
+   */
+  async addCustomItem(item: {
+    name: string;
+    category_id: number;
+    quantity?: number;
+    phase?: PackPhase;
+  }): Promise<Result<ChecklistItem, Error>> {
+    const name = item.name.trim();
+    if (!name) {
+      return { success: false, error: new Error('Item name is required') };
+    }
+
+    try {
+      const checklist = await db.checklists.toCollection().first();
+      if (!checklist) {
+        return { success: false, error: new Error('No active checklist') };
+      }
+      const category = await db.categories.get(item.category_id);
+      if (!category) {
+        return { success: false, error: new Error('Category not found') };
       }
 
-      // Update store
-      const store = useChecklistStore();
-      store.updateItem(itemId, checked);
-
-      return { success: true, data: item };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error : new Error('Failed to update item'),
+      const lastItem = await db.checklist_items
+        .where('checklist_id')
+        .equals(checklist.id!)
+        .reverse()
+        .sortBy('sort_order');
+      const newItem: Omit<ChecklistItem, 'id'> = {
+        checklist_id: checklist.id!,
+        name,
+        category_name: category.name,
+        category_id: category.id!,
+        quantity: Math.max(1, Math.floor(item.quantity ?? 1)),
+        phase: item.phase ?? 'ahead',
+        checked: false,
+        custom: true,
+        sort_order: (lastItem[0]?.sort_order ?? 0) + 1,
       };
+      const id = (await db.checklist_items.add(newItem)) as number;
+      const created = { ...newItem, id };
+
+      const store = useChecklistStore();
+      store.addItem(created);
+      if (!store.categories.some((c) => c.id === category.id)) {
+        store.categories = [...store.categories, category].sort(
+          (a, b) => a.sort_order - b.sort_order
+        );
+      }
+
+      return { success: true, data: created };
+    } catch (error) {
+      return { success: false, error: toError(error, 'Failed to add item') };
+    }
+  }
+
+  /**
+   * Remove an item from the current checklist
+   */
+  async deleteItem(itemId: number): Promise<Result<void, Error>> {
+    try {
+      await db.checklist_items.delete(itemId);
+      useChecklistStore().removeItem(itemId);
+      return { success: true, data: undefined };
+    } catch (error) {
+      return { success: false, error: toError(error, 'Failed to delete item') };
     }
   }
 
@@ -206,36 +234,18 @@ export class ChecklistService {
         return { success: false, error: new Error('No active checklist') };
       }
 
-      const items = await db.checklist_items
+      await db.checklist_items
         .where({ checklist_id: checklist.id!, category_id: categoryId })
-        .toArray();
+        .modify({ checked });
 
-      await db.transaction('rw', db.checklist_items, async () => {
-        for (const item of items) {
-          if (item.checked !== checked) {
-            await db.checklist_items.update(item.id!, { checked });
-          }
-        }
-      });
-
-      // Refresh store with updated items
       const store = useChecklistStore();
-      const allItems = await db.checklist_items
-        .where('checklist_id')
-        .equals(checklist.id!)
-        .toArray();
-      const categoryIds = [...new Set(allItems.map((i) => i.category_id))];
-      const categories = await db.categories.where('id').anyOf(categoryIds).toArray();
-
-      store.setChecklist({ checklist, items: allItems, categories });
+      store.items.forEach((item) => {
+        if (item.category_id === categoryId) item.checked = checked;
+      });
 
       return { success: true, data: undefined };
     } catch (error) {
-      return {
-        success: false,
-        error:
-          error instanceof Error ? error : new Error('Failed to update category checked state'),
-      };
+      return { success: false, error: toError(error, 'Failed to update category checked state') };
     }
   }
 
@@ -244,77 +254,14 @@ export class ChecklistService {
    */
   async clearCurrentChecklist(): Promise<Result<void, Error>> {
     try {
-      const checklist = await db.checklists.toCollection().first();
-      if (checklist) {
-        await db.checklist_items.where('checklist_id').equals(checklist.id!).delete();
-        await db.checklists.delete(checklist.id!);
-      }
-
-      // Update store
-      const store = useChecklistStore();
-      store.clearChecklist();
-
+      await db.transaction('rw', db.checklists, db.checklist_items, async () => {
+        await db.checklist_items.clear();
+        await db.checklists.clear();
+      });
+      useChecklistStore().clearChecklist();
       return { success: true, data: undefined };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error : new Error('Failed to clear checklist'),
-      };
-    }
-  }
-
-  /**
-   * Get per-day breakdown of items
-   */
-  async getDayBreakdown(): Promise<Result<DayBreakdown[], Error>> {
-    try {
-      const checklist = await db.checklists.toCollection().first();
-      if (!checklist) {
-        return { success: true, data: [] };
-      }
-
-      const calculator = usePerDayCalculator();
-      const tripDays = calculator.calculateTripDuration(checklist.start_date, checklist.end_date);
-      const items = await db.checklist_items.where('checklist_id').equals(checklist.id!).toArray();
-
-      const breakdown: DayBreakdown[] = [];
-      for (let day = 1; day <= tripDays; day++) {
-        const dayDate = calculator.getDayDate(checklist.start_date, day);
-        const dayItems = items.filter((item) => item.day === day);
-
-        if (dayItems.length === 0) continue;
-
-        const categoryGroups = new Map<number, { category_name: string; items: ChecklistItem[] }>();
-
-        dayItems.forEach((item) => {
-          if (!categoryGroups.has(item.category_id)) {
-            categoryGroups.set(item.category_id, {
-              category_name: item.category_name,
-              items: [],
-            });
-          }
-          categoryGroups.get(item.category_id)!.items.push(item);
-        });
-
-        breakdown.push({
-          day,
-          date: dayDate,
-          dayLabel: day <= tripDays ? `Day ${day}` : `Buffer Day ${day - tripDays}`,
-          items: dayItems,
-          categories: Array.from(categoryGroups.entries()).map(([category_id, group]) => ({
-            category_id,
-            category_name: group.category_name,
-            items: group.items,
-          })),
-        });
-      }
-
-      return { success: true, data: breakdown };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error : new Error('Failed to get day breakdown'),
-      };
+      return { success: false, error: toError(error, 'Failed to clear checklist') };
     }
   }
 
@@ -328,32 +275,159 @@ export class ChecklistService {
         return { success: true, data: [] };
       }
 
-      const items = await db.checklist_items.where('checklist_id').equals(checklist.id!).toArray();
-      const categoryIds = [...new Set(items.map((i) => i.category_id))];
-      const categories = await db.categories.where('id').anyOf(categoryIds).toArray();
-
+      const { items, categories } = await this.loadChecklist(checklist.id!, false);
       const summary: CategorySummary[] = categories.map((category) => {
         const categoryItems = items.filter((i) => i.category_id === category.id);
         const checkedItems = categoryItems.filter((i) => i.checked).length;
         const totalItems = categoryItems.length;
-        const percentage = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
-
         return {
           category_id: category.id!,
           category_name: category.name,
           icon: category.icon,
           total_items: totalItems,
           checked_items: checkedItems,
-          percentage,
+          percentage: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0,
         };
       });
 
       return { success: true, data: summary };
     } catch (error) {
+      return { success: false, error: toError(error, 'Failed to get category summary') };
+    }
+  }
+
+  /**
+   * Self-contained copy of the current checklist for sharing
+   */
+  async getSnapshot(includeChecked: boolean): Promise<Result<ChecklistSnapshot | null, Error>> {
+    try {
+      const checklist = await db.checklists.toCollection().first();
+      if (!checklist) {
+        return { success: true, data: null };
+      }
+      const { items } = await this.loadChecklist(checklist.id!, false);
       return {
-        success: false,
-        error: error instanceof Error ? error : new Error('Failed to get category summary'),
+        success: true,
+        data: {
+          title: checklist.title,
+          start_date: checklist.start_date,
+          end_date: checklist.end_date,
+          tags: checklist.tags,
+          items: items.map((item) => ({
+            name: item.name,
+            category_name: item.category_name,
+            quantity: item.quantity,
+            phase: item.phase,
+            ...(includeChecked && { checked: item.checked }),
+          })),
+        },
       };
+    } catch (error) {
+      return { success: false, error: toError(error, 'Failed to create snapshot') };
+    }
+  }
+
+  /**
+   * Replace the current checklist with a snapshot (e.g. from a share link).
+   * Categories are matched by name, case-insensitively; missing ones are created.
+   * With `addToLibrary`, items with no template of the same name are saved as templates.
+   */
+  async importChecklist(
+    snapshot: ChecklistSnapshot,
+    options: { addToLibrary?: boolean } = {}
+  ): Promise<Result<ChecklistWithItems, Error>> {
+    try {
+      const checklistId = await db.transaction(
+        'rw',
+        [db.checklists, db.checklist_items, db.categories, db.item_templates, db.preferences],
+        async () => {
+          const categories = await db.categories.toArray();
+          const templates = await db.item_templates.toArray();
+          const templateNames = new Set(templates.map((t) => t.name.toLowerCase()));
+
+          const resolveCategory = async (name: string): Promise<Category> => {
+            const existing = categories.find((c) => c.name.toLowerCase() === name.toLowerCase());
+            if (existing) return existing;
+            const created = {
+              name,
+              default_included: false,
+              sort_order: Math.max(0, ...categories.map((c) => c.sort_order)) + 1,
+            };
+            const id = (await db.categories.add(created)) as number;
+            const category = { ...created, id };
+            categories.push(category);
+            const preferences = await db.preferences.get(1);
+            if (preferences) {
+              await db.preferences.update(1, {
+                category_defaults: { ...preferences.category_defaults, [id]: false },
+                preferred_categories: [...preferences.preferred_categories, id],
+              });
+            }
+            return category;
+          };
+
+          await db.checklist_items.clear();
+          await db.checklists.clear();
+
+          // Copy in case the caller passed reactive (proxied) data, which IndexedDB can't store
+          const tags = [...(snapshot.tags ?? [])];
+          const id = (await db.checklists.add({
+            title: snapshot.title || checklistTitle(snapshot.start_date, snapshot.end_date),
+            start_date: snapshot.start_date,
+            end_date: snapshot.end_date,
+            spare_days: 0,
+            tags,
+            washing_machine_available: tags.includes('laundry'),
+            created_at: new Date().toISOString(),
+          })) as number;
+
+          const items: Omit<ChecklistItem, 'id'>[] = [];
+          const newTemplates: Omit<ItemTemplate, 'id'>[] = [];
+          for (const item of snapshot.items) {
+            const category = await resolveCategory(item.category_name);
+            const quantity = Math.max(1, Math.floor(item.quantity) || 1);
+            items.push({
+              checklist_id: id,
+              name: item.name,
+              category_name: category.name,
+              category_id: category.id!,
+              quantity,
+              phase: item.phase,
+              checked: item.checked ?? false,
+              sort_order: items.length + 1,
+            });
+
+            if (options.addToLibrary && !templateNames.has(item.name.toLowerCase())) {
+              templateNames.add(item.name.toLowerCase());
+              newTemplates.push({
+                name: item.name,
+                category_id: category.id!,
+                enabled: true,
+                tags: [],
+                quantity: { kind: 'fixed', count: quantity },
+                phase: item.phase,
+                sort_order:
+                  Math.max(
+                    0,
+                    ...templates
+                      .filter((t) => t.category_id === category.id)
+                      .map((t) => t.sort_order)
+                  ) +
+                  newTemplates.length +
+                  1,
+              });
+            }
+          }
+
+          await db.checklist_items.bulkAdd(items);
+          await db.item_templates.bulkAdd(newTemplates);
+          return id;
+        }
+      );
+
+      return { success: true, data: await this.loadChecklist(checklistId) };
+    } catch (error) {
+      return { success: false, error: toError(error, 'Failed to import checklist') };
     }
   }
 
@@ -375,8 +449,8 @@ export class ChecklistService {
       errors.push({ field: 'end_date', message: 'End date must be after start date' });
     }
 
-    if (input.buffer_days < 0) {
-      errors.push({ field: 'buffer_days', message: 'Buffer days cannot be negative' });
+    if (input.spare_days < 0) {
+      errors.push({ field: 'spare_days', message: 'Spare days cannot be negative' });
     }
 
     if (input.washing_machine_available && input.max_days_before_washing) {
@@ -396,5 +470,45 @@ export class ChecklistService {
     }
 
     return errors;
+  }
+
+  private async updateItem(
+    itemId: number,
+    changes: Partial<Pick<ChecklistItem, 'checked' | 'quantity'>>
+  ): Promise<Result<ChecklistItem, Error>> {
+    try {
+      await db.checklist_items.update(itemId, changes);
+      const item = await db.checklist_items.get(itemId);
+      if (!item) {
+        return { success: false, error: new Error('Item not found') };
+      }
+      useChecklistStore().patchItem(itemId, changes);
+      return { success: true, data: item };
+    } catch (error) {
+      return { success: false, error: toError(error, 'Failed to update item') };
+    }
+  }
+
+  /**
+   * Load a checklist with its items (in sort order) and their categories, optionally
+   * pushing it into the store
+   */
+  private async loadChecklist(
+    checklistId: number,
+    updateStore = true
+  ): Promise<ChecklistWithItems> {
+    const checklist = await db.checklists.get(checklistId);
+    if (!checklist) throw new Error('Checklist not found');
+
+    const items = await db.checklist_items
+      .where('checklist_id')
+      .equals(checklistId)
+      .sortBy('sort_order');
+    const categoryIds = [...new Set(items.map((i) => i.category_id))];
+    const categories = await db.categories.where('id').anyOf(categoryIds).sortBy('sort_order');
+
+    const data: ChecklistWithItems = { checklist, items, categories };
+    if (updateStore) useChecklistStore().setChecklist(data);
+    return data;
   }
 }

@@ -1,391 +1,344 @@
 <template>
   <div class="min-h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 pb-20">
-    <div class="max-w-4xl mx-auto px-4 py-8">
-      <!-- Header -->
-      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h1 class="text-3xl font-bold text-gray-900 mb-4">{{ checklist?.title }}</h1>
-
-        <!-- Trip Details -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 text-sm">
-          <div>
-            <span class="text-gray-500">Start:</span>
-            <span class="ml-2 font-medium text-gray-900">{{
-              formatDate(checklist?.start_date)
-            }}</span>
-          </div>
-          <div>
-            <span class="text-gray-500">End:</span>
-            <span class="ml-2 font-medium text-gray-900">{{
-              formatDate(checklist?.end_date)
-            }}</span>
-          </div>
-          <div>
-            <span class="text-gray-500">Duration:</span>
-            <span class="ml-2 font-medium text-gray-900"
-              >{{ tripDays }} days + {{ checklist?.buffer_days }} buffer</span
-            >
-          </div>
-        </div>
-
-        <!-- Overall Progress Bar -->
-        <div class="space-y-2">
-          <div class="flex items-center justify-between text-sm">
-            <span class="font-medium text-gray-700">Overall Progress</span>
-            <span class="text-gray-600">
-              <span class="font-bold text-indigo-600">{{ checklistStore.checkedItems }}</span> of
-              <span class="font-bold">{{ checklistStore.totalItems }}</span> packed
-              <span class="ml-2 text-indigo-600">({{ checklistStore.progress }}%)</span>
-            </span>
-          </div>
-          <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div
-              class="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all duration-300"
-              :style="{ width: `${checklistStore.progress}%` }"
-            ></div>
-          </div>
-        </div>
-      </div>
-
+    <div class="max-w-4xl mx-auto px-4 py-6 sm:py-8">
       <!-- Loading State -->
       <div v-if="loading" class="text-center py-12">
         <p class="text-gray-500">Loading checklist...</p>
       </div>
 
       <!-- No Checklist -->
-      <div v-else-if="!checklist" class="text-center py-12 bg-white rounded-lg shadow-md p-8">
+      <div v-else-if="!checklist" class="text-center bg-white rounded-lg shadow-md p-8">
         <p class="text-gray-500 mb-4">No checklist found</p>
-        <BaseButton variant="primary" @click="router.push('/')"> Create Checklist </BaseButton>
+        <BaseButton variant="primary" @click="router.push('/')">Create Checklist</BaseButton>
       </div>
 
-      <!-- Checklist Content -->
-      <div v-else class="space-y-6">
-        <!-- View Mode Toggle -->
-        <div class="bg-white rounded-lg shadow-md p-2 flex gap-2">
-          <button
-            @click="viewMode = 'category'"
-            :class="[
-              'flex-1 py-3 px-4 rounded-lg font-medium transition-all',
-              viewMode === 'category'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100',
-            ]"
+      <template v-else>
+        <!-- Header -->
+        <header class="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 space-y-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">{{ checklist.title }}</h1>
+              <p class="mt-1 text-sm text-gray-600">
+                {{ formatDate(checklist.start_date) }} – {{ formatDate(checklist.end_date) }}
+                <span class="text-gray-400">·</span>
+                {{ tripDays }} {{ tripDays === 1 ? 'day' : 'days' }}
+                <template v-if="checklist.spare_days > 0">
+                  + {{ checklist.spare_days }} spare</template
+                >
+              </p>
+            </div>
+            <ShareChecklistButton />
+          </div>
+
+          <ul v-if="tripTagLabels.length" class="flex flex-wrap gap-1.5" aria-label="Trip details">
+            <li
+              v-for="label in tripTagLabels"
+              :key="label"
+              class="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700"
+            >
+              {{ label }}
+            </li>
+          </ul>
+
+          <!-- Overall Progress -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-sm">
+              <span class="font-medium text-gray-700">Progress</span>
+              <span class="text-gray-600">
+                <span class="font-bold text-indigo-600">{{ checklistStore.checkedItems }}</span>
+                of
+                <span class="font-bold">{{ checklistStore.totalItems }}</span> packed
+                <span class="ml-1 text-indigo-600">({{ checklistStore.progress }}%)</span>
+              </span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+              <div
+                class="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all duration-300"
+                :style="{ width: `${checklistStore.progress}%` }"
+              ></div>
+            </div>
+          </div>
+        </header>
+
+        <!-- View controls -->
+        <div class="mb-4 flex flex-wrap items-center gap-2">
+          <div
+            class="flex flex-1 gap-1 rounded-lg bg-white p-1 shadow-md"
+            role="radiogroup"
+            aria-label="Group items"
           >
-            📦 By Category
-          </button>
-          <button
-            @click="viewMode = 'day'"
-            :class="[
-              'flex-1 py-3 px-4 rounded-lg font-medium transition-all',
-              viewMode === 'day'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100',
-            ]"
+            <button
+              v-for="mode in viewModes"
+              :key="mode.value"
+              type="button"
+              role="radio"
+              :aria-checked="viewMode === mode.value"
+              :class="[
+                'min-h-[40px] flex-1 rounded-md px-3 text-sm font-medium transition-colors',
+                viewMode === mode.value
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-gray-600 hover:bg-gray-100',
+              ]"
+              @click="viewMode = mode.value"
+            >
+              {{ mode.label }}
+            </button>
+          </div>
+          <label
+            class="flex min-h-[48px] cursor-pointer select-none items-center gap-2 rounded-lg bg-white px-3 text-sm font-medium text-gray-700 shadow-md"
           >
-            📅 By Day
-          </button>
+            <input
+              v-model="hidePacked"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            Hide packed
+          </label>
         </div>
 
-        <!-- By Category View -->
+        <!-- By Category -->
         <div v-if="viewMode === 'category'" class="space-y-4">
-          <div
-            v-for="category in categories"
+          <section
+            v-for="category in checklistStore.categories"
             :key="category.id"
             class="bg-white rounded-lg shadow-md overflow-hidden"
           >
-            <!-- Category Header with Bulk Toggle -->
             <div
-              class="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b border-gray-200"
+              class="bg-gradient-to-r from-indigo-50 to-blue-50 px-3 pt-1 pb-3 sm:px-4 border-b border-gray-200"
             >
               <CategorySummary
                 :category-id="category.id!"
                 :category-name="category.name"
-                :total-items="getCategoryItemCount(category.id!)"
-                :checked-count="getCategoryCheckedCount(category.id!)"
+                :total-items="categoryItems(category.id!).length"
+                :checked-count="categoryItems(category.id!).filter((i) => i.checked).length"
                 @toggle-category="handleCategoryToggle"
               />
             </div>
-
-            <!-- Category Items -->
-            <div class="p-6">
-              <div class="space-y-3">
-                <div
-                  v-for="itemGroup in getGroupedItemsByCategory(category.id!)"
-                  :key="itemGroup.name"
-                  class="flex items-center justify-between py-3 px-4 hover:bg-gray-50 rounded-lg transition-colors border border-gray-100"
-                >
-                  <div class="flex items-center flex-1">
-                    <input
-                      :id="`item-group-${category.id}-${itemGroup.name}`"
-                      type="checkbox"
-                      :checked="itemGroup.allChecked"
-                      :indeterminate.prop="itemGroup.someChecked && !itemGroup.allChecked"
-                      @change="handleItemGroupCheck(itemGroup.items, $event)"
-                      class="w-5 h-5 text-indigo-600 bg-white border-2 border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                    />
-                    <label
-                      :for="`item-group-${category.id}-${itemGroup.name}`"
-                      class="ml-4 text-gray-800 font-medium cursor-pointer select-none"
-                      :class="{ 'line-through text-gray-400': itemGroup.allChecked }"
-                    >
-                      {{ itemGroup.name }} ×{{ itemGroup.totalQuantity }}
-                    </label>
-                  </div>
-                  <div class="text-sm text-gray-500">
-                    {{ itemGroup.checkedCount }}/{{ itemGroup.items.length }} checked
-                  </div>
-                </div>
-              </div>
+            <div class="px-3 py-2 sm:px-4">
+              <ul class="divide-y divide-gray-100">
+                <ChecklistItemRow
+                  v-for="item in visible(categoryItems(category.id!))"
+                  :key="item.id"
+                  :item="item"
+                  @toggle="(checked) => handleCheck(item, checked)"
+                  @change-quantity="(qty) => handleQuantity(item, qty)"
+                  @delete="handleDelete(item)"
+                />
+              </ul>
+              <p
+                v-if="hidePacked && allPacked(categoryItems(category.id!))"
+                class="py-2 text-sm text-gray-500"
+              >
+                All packed
+              </p>
+              <AddItemForm :category-id="category.id!" class="mt-1" />
             </div>
-          </div>
+          </section>
         </div>
 
-        <!-- By Day View -->
-        <div v-if="viewMode === 'day'" class="space-y-4">
-          <div
-            v-for="dayGroup in itemsByDay"
-            :key="dayGroup.day"
+        <!-- By Phase -->
+        <div v-else class="space-y-4">
+          <section
+            v-for="section in phaseSections"
+            :key="section.phase"
             class="bg-white rounded-lg shadow-md overflow-hidden"
           >
-            <!-- Day Header -->
             <div
-              class="bg-gradient-to-r from-purple-50 to-pink-50 px-6 py-4 border-b border-gray-200"
+              class="flex items-center justify-between bg-gradient-to-r from-purple-50 to-pink-50 px-4 py-3 border-b border-gray-200"
             >
-              <h3 class="text-xl font-bold text-gray-900">{{ dayGroup.dayLabel }}</h3>
-              <p class="text-sm text-gray-600 mt-1">{{ dayGroup.date }}</p>
+              <h2 class="text-lg font-bold text-gray-900">
+                {{ PACK_PHASE_LABELS[section.phase] }}
+              </h2>
+              <span class="text-sm text-gray-600">{{ section.checked }}/{{ section.total }}</span>
             </div>
-
-            <!-- Day Items by Category -->
-            <div class="p-6">
-              <div class="space-y-6">
-                <div
-                  v-for="categoryGroup in dayGroup.categories"
-                  :key="categoryGroup.category_id"
-                  class="space-y-2"
-                >
-                  <h4 class="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-3">
-                    {{ categoryGroup.category_name }}
-                  </h4>
-                  <div class="space-y-2 pl-4">
-                    <div
-                      v-for="item in categoryGroup.items"
-                      :key="item.id"
-                      class="flex items-center justify-between py-2 px-3 hover:bg-gray-50 rounded-lg transition-colors"
-                    >
-                      <div class="flex items-center flex-1">
-                        <input
-                          :id="`day-item-${item.id}`"
-                          type="checkbox"
-                          :checked="item.checked"
-                          @change="handleItemCheck(item.id!, $event)"
-                          class="w-5 h-5 text-indigo-600 bg-white border-2 border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                        />
-                        <label
-                          :for="`day-item-${item.id}`"
-                          class="ml-3 text-gray-700 cursor-pointer select-none"
-                          :class="{ 'line-through text-gray-400': item.checked }"
-                        >
-                          {{ item.name }}
-                        </label>
-                      </div>
-                      <span class="text-sm font-medium text-gray-500">×{{ item.quantity }}</span>
-                    </div>
-                  </div>
-                </div>
+            <div class="px-3 py-2 sm:px-4 space-y-3">
+              <div v-for="group in section.groups" :key="group.category.id">
+                <h3 class="pt-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  {{ group.category.name }}
+                </h3>
+                <ul class="divide-y divide-gray-100">
+                  <ChecklistItemRow
+                    v-for="item in group.items"
+                    :key="item.id"
+                    :item="item"
+                    @toggle="(checked) => handleCheck(item, checked)"
+                    @change-quantity="(qty) => handleQuantity(item, qty)"
+                    @delete="handleDelete(item)"
+                  />
+                </ul>
               </div>
+              <p v-if="section.groups.length === 0" class="py-2 text-sm text-gray-500">
+                All packed
+              </p>
             </div>
-          </div>
+          </section>
+          <p
+            v-if="phaseSections.length === 0"
+            class="bg-white rounded-lg shadow-md p-6 text-center text-gray-500"
+          >
+            No items in this checklist
+          </p>
         </div>
 
         <!-- Actions -->
-        <div class="flex justify-center gap-4">
-          <BaseButton variant="outline" @click="router.push('/')">
-            Back to Questionnaire
-          </BaseButton>
+        <div class="mt-6 flex flex-wrap justify-center gap-3">
+          <BaseButton variant="outline" @click="router.push('/')">New trip</BaseButton>
         </div>
-      </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { format, parseISO } from 'date-fns';
 import BaseButton from '@/components/common/BaseButton.vue';
 import CategorySummary from '@/components/checklist/CategorySummary.vue';
+import ChecklistItemRow from '@/components/checklist/ChecklistItemRow.vue';
+import AddItemForm from '@/components/checklist/AddItemForm.vue';
+import ShareChecklistButton from '@/components/checklist/ShareChecklistButton.vue';
 import { useChecklist } from '@/composables/useChecklist';
+import { useToast } from '@/composables/useToast';
 import { useChecklistStore } from '@/stores/checklist';
 import { usePerDayCalculator } from '@/composables/usePerDayCalculator';
-import type { Checklist, ChecklistItem, Category, DayBreakdown } from '@/types';
+import { PACK_PHASES, PACK_PHASE_LABELS, TRIP_TAG_LABELS } from '@/types';
+import type { Category, ChecklistItem, PackPhase } from '@/types';
+
+type ViewMode = 'category' | 'phase';
+
+const HIDE_PACKED_KEY = 'packing.hidePacked';
+const viewModes: { value: ViewMode; label: string }[] = [
+  { value: 'category', label: 'By Category' },
+  { value: 'phase', label: 'By Phase' },
+];
 
 const router = useRouter();
-const { getCurrentChecklist, updateItemChecked, updateCategoryChecked } = useChecklist();
+const {
+  getCurrentChecklist,
+  updateItemChecked,
+  updateItemQuantity,
+  deleteItem,
+  updateCategoryChecked,
+} = useChecklist();
+const { showError, showInfo } = useToast();
 const checklistStore = useChecklistStore();
 const calculator = usePerDayCalculator();
 
-const loading = ref(true);
-const checklist = ref<Checklist | null>(null);
-const items = ref<ChecklistItem[]>([]);
-const categories = ref<Category[]>([]);
-const viewMode = ref<'category' | 'day'>('category');
+const loading = ref(!checklistStore.hasChecklist);
+const viewMode = ref<ViewMode>('category');
+const hidePacked = ref(readHidePacked());
 
-const tripDays = computed(() => {
-  if (!checklist.value) return 0;
-  return calculator.calculateTripDuration(checklist.value.start_date, checklist.value.end_date);
+watch(hidePacked, (value) => {
+  try {
+    localStorage.setItem(HIDE_PACKED_KEY, value ? '1' : '0');
+  } catch {
+    // Storage unavailable (e.g. private mode); the setting just won't be remembered
+  }
 });
 
-const itemsByDay = computed(() => {
-  if (!checklist.value) return [];
-
-  const dayGroups: DayBreakdown[] = [];
-  const totalDays = tripDays.value + (checklist.value.buffer_days || 0);
-
-  // First, add non-daily items (singular items for entire trip)
-  const nonDailyItems = items.value.filter((item) => !item.day);
-  if (nonDailyItems.length > 0) {
-    const categoryGroups = new Map<number, ChecklistItem[]>();
-    nonDailyItems.forEach((item) => {
-      if (!categoryGroups.has(item.category_id)) {
-        categoryGroups.set(item.category_id, []);
-      }
-      categoryGroups.get(item.category_id)!.push(item);
-    });
-
-    const categories = Array.from(categoryGroups.entries()).map(([categoryId, items]) => ({
-      category_id: categoryId,
-      category_name: items[0]!.category_name,
-      items: items,
-    }));
-
-    dayGroups.push({
-      day: 0,
-      date: `${checklist.value.start_date} to ${checklist.value.end_date}`,
-      dayLabel: 'For Entire Trip',
-      items: nonDailyItems,
-      categories,
-    });
+function readHidePacked(): boolean {
+  try {
+    return localStorage.getItem(HIDE_PACKED_KEY) === '1';
+  } catch {
+    return false;
   }
-
-  // Then add daily items grouped by day
-  for (let day = 1; day <= totalDays; day++) {
-    const dayDate = calculator.getDayDate(checklist.value.start_date, day);
-    const dayItems = items.value.filter((item) => item.day === day);
-
-    if (dayItems.length === 0) continue;
-
-    // Group by category
-    const categoryGroups = new Map<number, ChecklistItem[]>();
-    dayItems.forEach((item) => {
-      if (!categoryGroups.has(item.category_id)) {
-        categoryGroups.set(item.category_id, []);
-      }
-      categoryGroups.get(item.category_id)!.push(item);
-    });
-
-    const categories = Array.from(categoryGroups.entries()).map(([categoryId, items]) => ({
-      category_id: categoryId,
-      category_name: items[0]!.category_name,
-      items: items,
-    }));
-
-    const isBufferDay = day > tripDays.value;
-    const dayLabel = isBufferDay ? `Buffer Day ${day - tripDays.value}` : `Day ${day}`;
-
-    dayGroups.push({
-      day,
-      date: dayDate,
-      dayLabel,
-      items: dayItems,
-      categories,
-    });
-  }
-
-  return dayGroups;
-});
-
-function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return '';
-  // parseISO treats 'yyyy-MM-dd' as local time; new Date() would parse it as UTC
-  return format(parseISO(dateStr), 'MMM d, yyyy');
 }
 
-onMounted(async () => {
-  const result = await getCurrentChecklist();
+const checklist = computed(() => checklistStore.checklist);
 
-  if (result.success && result.data) {
-    checklist.value = result.data.checklist;
-    items.value = result.data.items;
-    categories.value = result.data.categories;
+const tripDays = computed(() =>
+  checklist.value
+    ? calculator.calculateTripDuration(checklist.value.start_date, checklist.value.end_date)
+    : 0
+);
+
+const tripTagLabels = computed(() =>
+  (checklist.value?.tags ?? []).map((tag) => TRIP_TAG_LABELS[tag])
+);
+
+const itemsByCategory = computed(() => {
+  const map = new Map<number, ChecklistItem[]>();
+  for (const item of checklistStore.items) {
+    const list = map.get(item.category_id);
+    if (list) list.push(item);
+    else map.set(item.category_id, [item]);
   }
+  return map;
+});
 
+const phaseSections = computed(() => {
+  const sections: {
+    phase: PackPhase;
+    total: number;
+    checked: number;
+    groups: { category: Category; items: ChecklistItem[] }[];
+  }[] = [];
+
+  for (const phase of PACK_PHASES) {
+    const phaseItems = checklistStore.items.filter((i) => i.phase === phase);
+    if (phaseItems.length === 0) continue;
+
+    const groups = checklistStore.categories
+      .map((category) => ({
+        category,
+        items: visible(phaseItems.filter((i) => i.category_id === category.id)),
+      }))
+      .filter((g) => g.items.length > 0);
+
+    sections.push({
+      phase,
+      total: phaseItems.length,
+      checked: phaseItems.filter((i) => i.checked).length,
+      groups,
+    });
+  }
+  return sections;
+});
+
+onMounted(async () => {
+  window.scrollTo(0, 0);
+  // Refresh from the database; this also populates the store
+  await getCurrentChecklist();
   loading.value = false;
 });
 
-function getItemsByCategory(categoryId: number): ChecklistItem[] {
-  return items.value.filter((item) => item.category_id === categoryId);
+function categoryItems(categoryId: number): ChecklistItem[] {
+  return itemsByCategory.value.get(categoryId) ?? [];
 }
 
-function getGroupedItemsByCategory(categoryId: number) {
-  const categoryItems = getItemsByCategory(categoryId);
-  const grouped = new Map<string, ChecklistItem[]>();
-
-  categoryItems.forEach((item) => {
-    if (!grouped.has(item.name)) {
-      grouped.set(item.name, []);
-    }
-    grouped.get(item.name)!.push(item);
-  });
-
-  return Array.from(grouped.entries()).map(([name, items]) => ({
-    name,
-    items,
-    totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
-    checkedCount: items.filter((item) => item.checked).length,
-    allChecked: items.every((item) => item.checked),
-    someChecked: items.some((item) => item.checked),
-  }));
+function visible(items: ChecklistItem[]): ChecklistItem[] {
+  return hidePacked.value ? items.filter((i) => !i.checked) : items;
 }
 
-function getCategoryItemCount(categoryId: number): number {
-  return getItemsByCategory(categoryId).length;
+function allPacked(items: ChecklistItem[]): boolean {
+  return items.length > 0 && items.every((i) => i.checked);
 }
 
-function getCategoryCheckedCount(categoryId: number): number {
-  return getItemsByCategory(categoryId).filter((item) => item.checked).length;
+function formatDate(dateStr: string): string {
+  // parseISO treats 'yyyy-MM-dd' as local time; new Date() would parse it as UTC
+  return format(parseISO(dateStr), 'EEE, MMM d');
 }
 
-async function handleItemCheck(itemId: number, event: Event) {
-  const target = event.target as HTMLInputElement;
-  const checked = target.checked;
-
-  await updateItemChecked(itemId, checked);
-
-  // Update local state
-  const item = items.value.find((i) => i.id === itemId);
-  if (item) {
-    item.checked = checked;
-  }
+async function handleCheck(item: ChecklistItem, checked: boolean) {
+  const result = await updateItemChecked(item.id!, checked);
+  if (!result.success) showError(result.error.message);
 }
 
-async function handleItemGroupCheck(groupItems: ChecklistItem[], event: Event) {
-  const target = event.target as HTMLInputElement;
-  const checked = target.checked;
+async function handleQuantity(item: ChecklistItem, quantity: number) {
+  if (quantity < 1) return;
+  const result = await updateItemQuantity(item.id!, quantity);
+  if (!result.success) showError(result.error.message);
+}
 
-  // Update all items in the group
-  for (const item of groupItems) {
-    await updateItemChecked(item.id!, checked);
-    item.checked = checked;
-  }
+async function handleDelete(item: ChecklistItem) {
+  const result = await deleteItem(item.id!);
+  if (result.success) showInfo(`Removed ${item.name}`, 3000);
+  else showError(result.error.message);
 }
 
 async function handleCategoryToggle(categoryId: number, checked: boolean) {
-  await updateCategoryChecked(categoryId, checked);
-
-  // Update local state for all items in category
-  items.value.forEach((item) => {
-    if (item.category_id === categoryId) {
-      item.checked = checked;
-    }
-  });
+  const result = await updateCategoryChecked(categoryId, checked);
+  if (!result.success) showError(result.error.message);
 }
 </script>

@@ -135,7 +135,7 @@ export class CategoryService {
   async addItemToCategory(
     categoryId: number,
     itemName: string,
-    enabled = true
+    options: Partial<Pick<ItemTemplate, 'enabled' | 'tags' | 'quantity' | 'phase'>> = {}
   ): Promise<Result<ItemTemplate, ValidationError>> {
     const validationErrors = this.validateItemName(itemName);
     if (validationErrors.length > 0) {
@@ -143,17 +143,18 @@ export class CategoryService {
     }
 
     try {
-      const id = await db.item_templates.add({
+      const siblings = await db.item_templates.where('category_id').equals(categoryId).toArray();
+      const newItem: Omit<ItemTemplate, 'id'> = {
         name: itemName,
         category_id: categoryId,
-        enabled,
-      });
-      const item: ItemTemplate = {
-        id: id as number,
-        name: itemName,
-        category_id: categoryId,
-        enabled,
+        enabled: options.enabled ?? true,
+        tags: options.tags ?? [],
+        quantity: options.quantity ?? { kind: 'fixed', count: 1 },
+        phase: options.phase ?? 'ahead',
+        sort_order: Math.max(0, ...siblings.map((i) => i.sort_order)) + 1,
       };
+      const id = await db.item_templates.add(newItem);
+      const item: ItemTemplate = { ...newItem, id: id as number };
 
       const store = useCategoryStore();
       store.addItemTemplate(item);
@@ -175,7 +176,7 @@ export class CategoryService {
    */
   async updateItemInCategory(
     itemId: number,
-    updates: Partial<Pick<ItemTemplate, 'name' | 'enabled'>>
+    updates: Partial<Pick<ItemTemplate, 'name' | 'enabled' | 'tags' | 'quantity' | 'phase'>>
   ): Promise<Result<ItemTemplate, ValidationError>> {
     if (updates.name) {
       const validationErrors = this.validateItemName(updates.name);
@@ -282,9 +283,14 @@ export class CategoryService {
    */
   async resetToDefaults(): Promise<Result<void, Error>> {
     try {
-      // Delete all custom categories and items
+      // Delete all custom categories and items, and force a full re-seed
       await db.item_templates.clear();
       await db.categories.clear();
+      await db.preferences.update(1, {
+        catalog_version: 0,
+        category_defaults: {},
+        preferred_categories: [],
+      });
 
       // Re-seed
       const { seedDefaultData } = await import('@/db/seed');
@@ -313,12 +319,6 @@ export class CategoryService {
         errors.push({ field: 'name', message: 'Category name is required' });
       } else if (category.name.length > 30) {
         errors.push({ field: 'name', message: 'Category name must be 30 characters or less' });
-      }
-    }
-
-    if (category.type !== undefined) {
-      if (category.type !== 'daily' && category.type !== 'singular') {
-        errors.push({ field: 'type', message: 'Category type must be daily or singular' });
       }
     }
 

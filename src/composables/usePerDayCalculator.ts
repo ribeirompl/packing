@@ -1,4 +1,15 @@
-import { differenceInDays, parseISO, addDays, format } from 'date-fns';
+import { differenceInDays, parseISO } from 'date-fns';
+import type { QuantityRule } from '@/types';
+
+export interface QuantityContext {
+  tripDays: number;
+  spareDays: number;
+  washingMachineAvailable: boolean;
+  maxDaysBeforeWashing?: number;
+}
+
+/** Trips longer than this without washing get a "consider doing laundry" hint */
+export const LAUNDRY_HINT_DAYS = 10;
 
 export function usePerDayCalculator() {
   /**
@@ -11,59 +22,69 @@ export function usePerDayCalculator() {
   }
 
   /**
-   * Calculate auto buffer days based on preferences
-   * If washing machine available with max_days_before_washing: use that value
-   * Otherwise: Math.max(Math.floor(tripDays / buffer_days_ratio), min_buffer_days)
+   * Spare days default: one per `ratio` trip days, at least `minSpareDays`
    */
-  function calculateAutoBufferDays(
-    startDate: string,
-    endDate: string,
-    washingMachineAvailable: boolean,
-    maxDaysBeforeWashing: number | undefined,
-    bufferDaysRatio: number,
-    minBufferDays: number
-  ): number {
-    if (washingMachineAvailable && maxDaysBeforeWashing) {
-      return maxDaysBeforeWashing;
-    }
-
-    const tripDays = calculateTripDuration(startDate, endDate);
-    return Math.max(Math.floor(tripDays / bufferDaysRatio), minBufferDays);
+  function calculateAutoSpareDays(tripDays: number, ratio: number, minSpareDays: number): number {
+    return Math.max(Math.floor(tripDays / ratio), minSpareDays);
   }
 
   /**
-   * Calculate daily quantity for an item based on washing machine availability
+   * Days a single set of clothes must cover: the whole trip, or the washing interval if shorter
    */
-  function calculateDailyQuantity(
-    tripDays: number,
-    bufferDays: number,
-    washingMachineAvailable: boolean,
-    maxDaysBeforeWashing?: number
-  ): number {
-    const totalDays = tripDays + bufferDays;
-
-    if (washingMachineAvailable && maxDaysBeforeWashing) {
-      // Can wash after maxDaysBeforeWashing, so need fewer items
-      return Math.ceil(totalDays / maxDaysBeforeWashing);
+  function calculateCoverageDays(ctx: QuantityContext): number {
+    if (ctx.washingMachineAvailable && ctx.maxDaysBeforeWashing && ctx.maxDaysBeforeWashing > 0) {
+      return Math.min(ctx.tripDays, ctx.maxDaysBeforeWashing);
     }
-
-    // No washing: need items for every day
-    return totalDays;
+    return ctx.tripDays;
   }
 
   /**
-   * Generate date string for a specific day of the trip
+   * Number of an item to pack for a trip
    */
-  function getDayDate(startDate: string, dayNumber: number): string {
-    const start = parseISO(startDate);
-    const dayDate = addDays(start, dayNumber - 1); // dayNumber is 1-indexed
-    return format(dayDate, 'MMM d, yyyy');
+  function calculateQuantity(rule: QuantityRule, ctx: QuantityContext): number {
+    const coverageDays = calculateCoverageDays(ctx);
+
+    let quantity: number;
+    switch (rule.kind) {
+      case 'per_day':
+        quantity = Math.ceil(coverageDays * rule.rate) + (rule.spare ? ctx.spareDays : 0);
+        break;
+      case 'per_n_days':
+        quantity = Math.max(Math.ceil(coverageDays / rule.n), rule.min ?? 1);
+        break;
+      case 'fixed':
+        return rule.count;
+    }
+
+    if (rule.min !== undefined) quantity = Math.max(quantity, rule.min);
+    if (rule.max !== undefined) quantity = Math.min(quantity, rule.max);
+    return quantity;
   }
 
   return {
     calculateTripDuration,
-    calculateAutoBufferDays,
-    calculateDailyQuantity,
-    getDayDate,
+    calculateAutoSpareDays,
+    calculateCoverageDays,
+    calculateQuantity,
   };
+}
+
+/** Short human-readable description of a quantity rule, e.g. "1 per day + spares" */
+export function describeQuantityRule(rule: QuantityRule): string {
+  let text: string;
+  switch (rule.kind) {
+    case 'per_day':
+      text = `${rule.rate} per day${rule.spare ? ' + spares' : ''}`;
+      break;
+    case 'per_n_days':
+      text = `1 per ${rule.n} days`;
+      break;
+    case 'fixed':
+      return `${rule.count}`;
+  }
+  const caps = [
+    rule.min !== undefined ? `min ${rule.min}` : '',
+    rule.max !== undefined ? `max ${rule.max}` : '',
+  ].filter(Boolean);
+  return caps.length ? `${text} (${caps.join(', ')})` : text;
 }

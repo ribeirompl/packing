@@ -51,9 +51,10 @@ export function useCategories() {
    */
   async function addItemToCategory(
     categoryId: number,
-    name: string
+    name: string,
+    options: Parameters<CategoryService['addItemToCategory']>[2] = {}
   ): Promise<Result<ItemTemplate, ValidationError>> {
-    return await service.addItemToCategory(categoryId, name);
+    return await service.addItemToCategory(categoryId, name, options);
   }
 
   /**
@@ -61,7 +62,7 @@ export function useCategories() {
    */
   async function updateItemInCategory(
     itemId: number,
-    updates: Partial<Omit<ItemTemplate, 'id' | 'category_id'>>
+    updates: Partial<Pick<ItemTemplate, 'name' | 'enabled' | 'tags' | 'quantity' | 'phase'>>
   ): Promise<Result<ItemTemplate, ValidationError>> {
     return await service.updateItemInCategory(itemId, updates);
   }

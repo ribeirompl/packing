@@ -26,10 +26,22 @@ export const useChecklistStore = defineStore('checklist', () => {
   }
 
   function updateItem(itemId: number, checked: boolean) {
+    patchItem(itemId, { checked });
+  }
+
+  function patchItem(itemId: number, changes: Partial<ChecklistItem>) {
     const item = items.value.find((i) => i.id === itemId);
     if (item) {
-      item.checked = checked;
+      Object.assign(item, changes);
     }
+  }
+
+  function addItem(item: ChecklistItem) {
+    items.value.push(item);
+  }
+
+  function removeItem(itemId: number) {
+    items.value = items.value.filter((i) => i.id !== itemId);
   }
 
   function clearChecklist() {
@@ -48,6 +60,9 @@ export const useChecklistStore = defineStore('checklist', () => {
     progress,
     setChecklist,
     updateItem,
+    patchItem,
+    addItem,
+    removeItem,
     clearChecklist,
   };
 });

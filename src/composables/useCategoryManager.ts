@@ -69,8 +69,12 @@ export function useCategoryManager() {
   /**
    * Add item to category
    */
-  async function addItemToCategory(categoryId: number, itemName: string, enabled = true) {
-    const result = await categoryService.addItemToCategory(categoryId, itemName, enabled);
+  async function addItemToCategory(
+    categoryId: number,
+    itemName: string,
+    options: Parameters<CategoryService['addItemToCategory']>[2] = {}
+  ) {
+    const result = await categoryService.addItemToCategory(categoryId, itemName, options);
 
     if (result.success) {
       store.addItemTemplate(result.data);
@@ -84,7 +88,7 @@ export function useCategoryManager() {
    */
   async function updateItemInCategory(
     itemId: number,
-    updates: Partial<Pick<ItemTemplate, 'name' | 'enabled'>>
+    updates: Partial<Pick<ItemTemplate, 'name' | 'enabled' | 'tags' | 'quantity' | 'phase'>>
   ) {
     const result = await categoryService.updateItemInCategory(itemId, updates);
 

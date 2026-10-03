@@ -1,23 +1,23 @@
 <template>
-  <div class="border border-gray-200 rounded-lg p-4">
-    <label class="flex items-center mb-2 cursor-pointer">
-      <input
-        :id="`category-${categoryId}`"
-        ref="checkboxRef"
-        type="checkbox"
-        :checked="allChecked"
-        @change="handleToggle"
-        class="touch-target w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
-      />
-      <span class="ml-3 font-medium text-gray-900">{{ categoryName }}</span>
-    </label>
-    <div class="flex items-center justify-between text-sm text-gray-600 mb-2">
-      <span>{{ checkedCount }} / {{ totalItems }}</span>
-      <span class="font-medium">{{ percentage }}%</span>
+  <div>
+    <div class="flex items-center justify-between gap-3">
+      <label class="flex min-h-[44px] flex-1 cursor-pointer items-center gap-3">
+        <input
+          :id="`category-${categoryId}`"
+          ref="checkboxRef"
+          type="checkbox"
+          :checked="allChecked"
+          class="h-5 w-5 cursor-pointer rounded border-gray-300 bg-white text-blue-600 focus:ring-2 focus:ring-blue-500"
+          :aria-label="`Mark all ${categoryName} as packed`"
+          @change="handleToggle"
+        />
+        <span class="text-lg font-bold text-gray-900">{{ categoryName }}</span>
+      </label>
+      <span class="text-sm text-gray-600">{{ checkedCount }}/{{ totalItems }}</span>
     </div>
-    <div class="w-full bg-gray-200 rounded-full h-2">
+    <div class="h-1.5 w-full rounded-full bg-gray-200">
       <div
-        class="bg-blue-600 h-2 rounded-full transition-all"
+        class="h-1.5 rounded-full bg-blue-600 transition-all"
         :style="{ width: percentage + '%' }"
       ></div>
     </div>

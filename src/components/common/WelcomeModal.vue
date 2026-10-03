@@ -29,14 +29,20 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import BaseModal from './BaseModal.vue';
 import BaseButton from './BaseButton.vue';
 import { PreferenceService } from '@/services/PreferenceService';
 
 const preferenceService = new PreferenceService();
+const router = useRouter();
 const isOpen = ref(false);
 
 onMounted(async () => {
+  // Don't cover a shared checklist someone is opening; they'll see the welcome next time
+  await router.isReady();
+  if (router.currentRoute.value.name === 'import') return;
+
   const result = await preferenceService.getPreferences();
 
   if (result.success && !result.data.welcome_seen) {

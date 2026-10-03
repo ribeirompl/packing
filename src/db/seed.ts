@@ -1,138 +1,73 @@
-import type { Category, ItemTemplate, Preference } from '@/types';
+import type { ItemTemplate, Preference } from '@/types';
+import { CATALOG_VERSION, DEFAULT_CATALOG } from './catalog';
 import { db } from './schema';
 
 /**
- * Seed default categories, items, and preferences on database creation
+ * Seed default categories, items and preferences on first run, and merge in catalog
+ * additions (matched by name, case-insensitively) when CATALOG_VERSION increases.
+ * Existing categories and items, including user edits, are never modified.
  */
 export async function seedDefaultData(): Promise<void> {
-  // Check if already seeded
-  const existingCategories = await db.categories.count();
-  if (existingCategories > 0) {
-    return; // Already seeded
-  }
+  await db.transaction('rw', db.categories, db.item_templates, db.preferences, async () => {
+    const preferences = await db.preferences.get(1);
+    if ((preferences?.catalog_version ?? 0) >= CATALOG_VERSION) {
+      return;
+    }
 
-  // Default categories
-  const categories: Omit<Category, 'id'>[] = [
-    { name: 'Clothes', type: 'daily', default_included: true, sort_order: 1, icon: 'shirt' },
-    {
-      name: 'Toiletries',
-      type: 'singular',
-      default_included: true,
-      sort_order: 2,
-      icon: 'droplet',
-    },
-    {
-      name: 'Electronics',
-      type: 'singular',
-      default_included: true,
-      sort_order: 3,
-      icon: 'laptop',
-    },
-    {
-      name: 'Documents',
-      type: 'singular',
-      default_included: true,
-      sort_order: 4,
-      icon: 'file',
-    },
-    {
-      name: 'Accessories',
-      type: 'singular',
-      default_included: false,
-      sort_order: 5,
-      icon: 'watch',
-    },
-    {
-      name: 'Health & Safety',
-      type: 'singular',
-      default_included: false,
-      sort_order: 6,
-      icon: 'heart',
-    },
-    {
-      name: 'Entertainment',
-      type: 'singular',
-      default_included: false,
-      sort_order: 7,
-      icon: 'book',
-    },
-  ];
+    const categories = await db.categories.toArray();
+    const templates = await db.item_templates.toArray();
+    const templateNames = new Set(templates.map((t) => t.name.toLowerCase()));
+    const categoryDefaults: Record<number, boolean> = { ...preferences?.category_defaults };
+    let nextCategoryOrder = Math.max(0, ...categories.map((c) => c.sort_order)) + 1;
 
-  const categoryIds = await db.categories.bulkAdd(categories, { allKeys: true });
+    for (const catalogCategory of DEFAULT_CATALOG) {
+      let category = categories.find(
+        (c) => c.name.toLowerCase() === catalogCategory.name.toLowerCase()
+      );
+      if (!category) {
+        const newCategory = {
+          name: catalogCategory.name,
+          icon: catalogCategory.icon,
+          default_included: catalogCategory.default_included,
+          sort_order: nextCategoryOrder++,
+        };
+        const id = (await db.categories.add(newCategory)) as number;
+        category = { ...newCategory, id };
+        categories.push(category);
+        categoryDefaults[id] = catalogCategory.default_included;
+      }
 
-  // Default item templates
-  const itemTemplates: Omit<ItemTemplate, 'id'>[] = [
-    // Clothes (daily)
-    { name: 'T-shirt', category_id: categoryIds[0] as number, enabled: true },
-    { name: 'Underwear', category_id: categoryIds[0] as number, enabled: true },
-    { name: 'Socks', category_id: categoryIds[0] as number, enabled: true },
-    { name: 'Pants/Jeans', category_id: categoryIds[0] as number, enabled: true },
-    { name: 'Formal shirt', category_id: categoryIds[0] as number, enabled: true },
-    { name: 'Formal pants', category_id: categoryIds[0] as number, enabled: true },
-    { name: 'Swimsuit', category_id: categoryIds[0] as number, enabled: true },
-    { name: 'Shorts', category_id: categoryIds[0] as number, enabled: true },
-    { name: 'Light jacket', category_id: categoryIds[0] as number, enabled: true },
+      const categoryId = category.id!;
+      let nextItemOrder =
+        Math.max(
+          0,
+          ...templates.filter((t) => t.category_id === categoryId).map((t) => t.sort_order)
+        ) + 1;
+      const newTemplates: Omit<ItemTemplate, 'id'>[] = catalogCategory.items
+        .filter((item) => !templateNames.has(item.name.toLowerCase()))
+        .map((item) => ({
+          name: item.name,
+          category_id: categoryId,
+          enabled: item.enabled ?? true,
+          tags: item.tags ?? [],
+          quantity: item.quantity,
+          phase: item.phase ?? 'ahead',
+          sort_order: nextItemOrder++,
+        }));
+      await db.item_templates.bulkAdd(newTemplates);
+    }
 
-    // Toiletries (singular)
-    { name: 'Toothbrush', category_id: categoryIds[1] as number, enabled: true },
-    { name: 'Toothpaste', category_id: categoryIds[1] as number, enabled: true },
-    { name: 'Shampoo', category_id: categoryIds[1] as number, enabled: true },
-    { name: 'Soap/Body wash', category_id: categoryIds[1] as number, enabled: true },
-    { name: 'Deodorant', category_id: categoryIds[1] as number, enabled: true },
-    { name: 'Razor', category_id: categoryIds[1] as number, enabled: true },
-    { name: 'Sunscreen', category_id: categoryIds[1] as number, enabled: true },
-
-    // Electronics (singular)
-    { name: 'Phone charger', category_id: categoryIds[2] as number, enabled: true },
-    { name: 'Laptop', category_id: categoryIds[2] as number, enabled: false },
-    { name: 'Laptop charger', category_id: categoryIds[2] as number, enabled: false },
-    { name: 'Headphones', category_id: categoryIds[2] as number, enabled: true },
-    { name: 'Power bank', category_id: categoryIds[2] as number, enabled: true },
-    { name: 'Camera', category_id: categoryIds[2] as number, enabled: false },
-
-    // Documents (singular)
-    { name: 'Passport', category_id: categoryIds[3] as number, enabled: true },
-    { name: 'ID card', category_id: categoryIds[3] as number, enabled: true },
-    { name: 'Travel tickets/confirmation', category_id: categoryIds[3] as number, enabled: true },
-    { name: 'Travel insurance', category_id: categoryIds[3] as number, enabled: true },
-    { name: 'Credit/debit cards', category_id: categoryIds[3] as number, enabled: true },
-
-    // Accessories (singular)
-    { name: 'Watch', category_id: categoryIds[4] as number, enabled: true },
-    { name: 'Sunglasses', category_id: categoryIds[4] as number, enabled: true },
-    { name: 'Hat/Cap', category_id: categoryIds[4] as number, enabled: true },
-    { name: 'Belt', category_id: categoryIds[4] as number, enabled: true },
-
-    // Health & Safety (singular)
-    { name: 'Prescription medications', category_id: categoryIds[5] as number, enabled: true },
-    { name: 'First aid kit', category_id: categoryIds[5] as number, enabled: true },
-    { name: 'Hand sanitizer', category_id: categoryIds[5] as number, enabled: true },
-    { name: 'Face masks', category_id: categoryIds[5] as number, enabled: false },
-
-    // Entertainment (singular)
-    { name: 'Book/E-reader', category_id: categoryIds[6] as number, enabled: true },
-    { name: 'Travel pillow', category_id: categoryIds[6] as number, enabled: false },
-    { name: 'Eye mask', category_id: categoryIds[6] as number, enabled: false },
-  ];
-
-  await db.item_templates.bulkAdd(itemTemplates);
-
-  // Default preferences
-  const defaultPreference: Omit<Preference, 'id'> = {
-    buffer_days_ratio: 7,
-    min_buffer_days: 1,
-    category_defaults: {
-      [categoryIds[0] as number]: true,
-      [categoryIds[1] as number]: true,
-      [categoryIds[2] as number]: true,
-      [categoryIds[3] as number]: true,
-      [categoryIds[4] as number]: false,
-      [categoryIds[5] as number]: false,
-      [categoryIds[6] as number]: false,
-    },
-    preferred_categories: categoryIds as number[],
-    welcome_seen: false,
-  };
-
-  await db.preferences.add(defaultPreference);
+    const updated: Preference = {
+      buffer_days_ratio: 7,
+      min_buffer_days: 1,
+      preferred_categories: [],
+      welcome_seen: false,
+      ...preferences,
+      category_defaults: categoryDefaults,
+      catalog_version: CATALOG_VERSION,
+      id: 1,
+    };
+    updated.preferred_categories = categories.map((c) => c.id!);
+    await db.preferences.put(updated);
+  });
 }

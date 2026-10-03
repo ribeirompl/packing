@@ -111,9 +111,11 @@ import { usePreferences } from '../composables/usePreferences';
 import type { Preference } from '@/types';
 import PreferenceEditor from '../components/settings/PreferenceEditor.vue';
 import CategoryManager from '../components/settings/CategoryManager.vue';
+import { useToast } from '@/composables/useToast';
 
 const router = useRouter();
 const { getPreferences, updatePreferences, resetToDefaults } = usePreferences();
+const { showError, showSuccess } = useToast();
 
 const activeTab = ref<'preferences' | 'categories'>('preferences');
 const preferences = ref<Preference | null>(null);
@@ -133,6 +135,9 @@ async function handleSavePreferences(updates: Partial<Preference>) {
   const result = await updatePreferences(updates);
   if (result.success && result.data) {
     preferences.value = result.data;
+    showSuccess('Preferences saved', 3000);
+  } else if (!result.success) {
+    showError(result.error.message);
   }
 }
 

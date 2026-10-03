@@ -1,6 +1,6 @@
 import { ChecklistService } from '@/services/ChecklistService';
 import { useChecklistStore } from '@/stores/checklist';
-import type { QuestionnaireInput, DayBreakdown, CategorySummary } from '@/types';
+import type { QuestionnaireInput, CategorySummary, ChecklistSnapshot, PackPhase } from '@/types';
 
 const checklistService = new ChecklistService();
 
@@ -60,12 +60,32 @@ export function useChecklist() {
     return result;
   }
 
-  /**
-   * Get per-day breakdown
-   */
-  async function getDayBreakdown(): Promise<DayBreakdown[]> {
-    const result = await checklistService.getDayBreakdown();
-    return result.success ? result.data : [];
+  async function updateItemQuantity(itemId: number, quantity: number) {
+    return await checklistService.updateItemQuantity(itemId, quantity);
+  }
+
+  async function addCustomItem(item: {
+    name: string;
+    category_id: number;
+    quantity?: number;
+    phase?: PackPhase;
+  }) {
+    return await checklistService.addCustomItem(item);
+  }
+
+  async function deleteItem(itemId: number) {
+    return await checklistService.deleteItem(itemId);
+  }
+
+  async function getSnapshot(includeChecked: boolean) {
+    return await checklistService.getSnapshot(includeChecked);
+  }
+
+  async function importChecklist(
+    snapshot: ChecklistSnapshot,
+    options?: { addToLibrary?: boolean }
+  ) {
+    return await checklistService.importChecklist(snapshot, options);
   }
 
   /**
@@ -82,7 +102,11 @@ export function useChecklist() {
     updateItemChecked,
     updateCategoryChecked,
     clearCurrentChecklist,
-    getDayBreakdown,
+    updateItemQuantity,
+    addCustomItem,
+    deleteItem,
+    getSnapshot,
+    importChecklist,
     getCategorySummary,
     // Store getters
     checklist: store.checklist,

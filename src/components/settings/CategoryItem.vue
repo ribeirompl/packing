@@ -15,7 +15,7 @@
         />
         <h3 v-else class="font-medium text-gray-900">
           {{ category.name }}
-          <span class="text-xs text-gray-500 ml-2">({{ category.type }})</span>
+          <span class="text-xs font-normal text-gray-500 ml-1">({{ items.length }})</span>
         </h3>
       </div>
 
