@@ -210,7 +210,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import BaseButton from '@/components/common/BaseButton.vue';
 import CategorySummary from '@/components/checklist/CategorySummary.vue';
 import { useChecklist } from '@/composables/useChecklist';
@@ -305,7 +305,8 @@ const itemsByDay = computed(() => {
 
 function formatDate(dateStr: string | undefined): string {
   if (!dateStr) return '';
-  return format(new Date(dateStr), 'MMM d, yyyy');
+  // parseISO treats 'yyyy-MM-dd' as local time; new Date() would parse it as UTC
+  return format(parseISO(dateStr), 'MMM d, yyyy');
 }
 
 onMounted(async () => {
