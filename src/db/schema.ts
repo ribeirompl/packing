@@ -22,6 +22,11 @@ export class PackingDB extends Dexie {
       categories: '++id, sort_order',
       preferences: '++id',
     });
+
+    // Version 2: Compound index for per-category queries within a checklist
+    this.version(2).stores({
+      checklist_items: '++id, checklist_id, category_id, checked, [checklist_id+category_id]',
+    });
   }
 }
 
