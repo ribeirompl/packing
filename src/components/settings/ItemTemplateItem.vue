@@ -127,28 +127,31 @@
               />
               <span class="text-gray-600">days</span>
             </div>
-            <div class="flex flex-wrap items-center gap-2 text-sm">
-              <label :for="`${uid}-min`" class="text-gray-600">Min</label>
-              <input
-                :id="`${uid}-min`"
-                v-model.number="draft.min"
-                type="number"
-                min="1"
-                step="1"
-                placeholder="–"
-                :class="numberInputClass"
-              />
-              <label :for="`${uid}-max`" class="ml-2 text-gray-600">Max</label>
-              <input
-                :id="`${uid}-max`"
-                v-model.number="draft.max"
-                type="number"
-                min="1"
-                step="1"
-                placeholder="–"
-                :class="numberInputClass"
-              />
-              <span class="text-xs text-gray-500">(optional)</span>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <label :for="`${uid}-min`" class="flex flex-col gap-1 text-gray-600">
+                Min <span class="sr-only">(optional)</span>
+                <input
+                  :id="`${uid}-min`"
+                  v-model.number="draft.min"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="None"
+                  :class="numberInputClass"
+                />
+              </label>
+              <label :for="`${uid}-max`" class="flex flex-col gap-1 text-gray-600">
+                Max <span class="sr-only">(optional)</span>
+                <input
+                  :id="`${uid}-max`"
+                  v-model.number="draft.max"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="None"
+                  :class="numberInputClass"
+                />
+              </label>
             </div>
           </template>
           <p class="text-xs text-gray-500">
