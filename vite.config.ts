@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { VitePWA } from 'vite-plugin-pwa';
-import tailwindcss from '@tailwindcss/vite'
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
 // https://vite.dev/config/
@@ -66,13 +66,15 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          'vue-vendor': ['vue', 'vue-router', 'pinia'],
-          'db-vendor': ['dexie'],
-          'ui-vendor': ['@headlessui/vue'],
-          'date-vendor': ['date-fns'],
+        codeSplitting: {
+          groups: [
+            { name: 'vue-vendor', test: /node_modules[\\/](@vue|vue|vue-router|pinia)[\\/]/ },
+            { name: 'db-vendor', test: /node_modules[\\/]dexie[\\/]/ },
+            { name: 'ui-vendor', test: /node_modules[\\/]@headlessui[\\/]/ },
+            { name: 'date-vendor', test: /node_modules[\\/]date-fns[\\/]/ },
+          ],
         },
       },
     },
