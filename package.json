@@ -6,12 +6,12 @@
   "description": "Offline-first PWA for trip packing checklists",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "build": "npm run type-check && vite build",
     "preview": "vite preview",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
-    "type-check": "vue-tsc --noEmit",
+    "type-check": "vue-tsc --noEmit && tsc -p tsconfig.node.json",
     "lint": "eslint . --fix",
     "format": "prettier --write src/"
   },

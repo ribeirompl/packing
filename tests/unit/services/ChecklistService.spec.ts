@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 import { ChecklistService } from '../../../src/services/ChecklistService';
 import { db } from '../../../src/db/schema';
 import type { QuestionnaireInput } from '../../../src/types';
@@ -7,6 +8,9 @@ describe('ChecklistService', () => {
   const service = new ChecklistService();
 
   beforeEach(async () => {
+    // Services update Pinia stores, so each test needs an active Pinia instance
+    setActivePinia(createPinia());
+
     // Clear database before each test
     await db.delete();
     await db.open();
@@ -14,25 +18,25 @@ describe('ChecklistService', () => {
     // Seed test data
     const category1 = await db.categories.add({
       name: 'Clothes',
-      type: 'general',
+      type: 'daily',
       sort_order: 1,
       default_included: true,
     });
 
     const category2 = await db.categories.add({
       name: 'Electronics',
-      type: 'general',
+      type: 'singular',
       sort_order: 2,
       default_included: true,
     });
 
     await db.item_templates.bulkAdd([
-      { name: 'T-shirt', category_id: category1, enabled: true },
-      { name: 'Shorts', category_id: category1, enabled: true, hot_weather: true },
-      { name: 'Formal Shirt', category_id: category1, enabled: true, formal_attire: true },
-      { name: 'Swimsuit', category_id: category1, enabled: true, swimming: true },
-      { name: 'Laptop', category_id: category2, enabled: true },
-      { name: 'Charger', category_id: category2, enabled: false },
+      { name: 'T-shirt', category_id: category1 as number, enabled: true },
+      { name: 'Shorts', category_id: category1 as number, enabled: true },
+      { name: 'Formal Shirt', category_id: category1 as number, enabled: true },
+      { name: 'Swimsuit', category_id: category1 as number, enabled: true },
+      { name: 'Laptop', category_id: category2 as number, enabled: true },
+      { name: 'Charger', category_id: category2 as number, enabled: false },
     ]);
   });
 
@@ -54,7 +58,7 @@ describe('ChecklistService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.checklist.title).toBe('2024-06-01 to 2024-06-05');
+        expect(result.data.checklist.title).toBe('Jun 1 - Jun 5, 2024');
         expect(result.data.checklist.start_date).toBe('2024-06-01');
         expect(result.data.checklist.end_date).toBe('2024-06-05');
         expect(result.data.checklist.buffer_days).toBe(2);
@@ -177,7 +181,7 @@ describe('ChecklistService', () => {
       const allChecklists = await db.checklists.toArray();
       expect(allChecklists.length).toBe(1);
       if (result2.success) {
-        expect(allChecklists[0].title).toBe('2024-07-01 to 2024-07-10');
+        expect(allChecklists[0]!.title).toBe('Jul 1 - Jul 10, 2024');
       }
     });
   });
@@ -200,7 +204,7 @@ describe('ChecklistService', () => {
       expect(generateResult.success).toBe(true);
 
       if (generateResult.success) {
-        const firstItem = generateResult.data.items[0];
+        const firstItem = generateResult.data.items[0]!;
         expect(firstItem.checked).toBe(false);
 
         // Update checked state
@@ -299,9 +303,11 @@ describe('ChecklistService', () => {
 
       if (generateResult.success) {
         // Check one item
-        await service.updateItemChecked(generateResult.data.items[0].id!, true);
+        await service.updateItemChecked(generateResult.data.items[0]!.id!, true);
 
-        const summary = await service.getCategorySummary();
+        const result = await service.getCategorySummary();
+        expect(result.success).toBe(true);
+        const summary = result.success ? result.data : [];
         expect(summary.length).toBeGreaterThan(0);
         expect(summary[0]).toHaveProperty('category_name');
         expect(summary[0]).toHaveProperty('total_items');
@@ -330,7 +336,7 @@ describe('ChecklistService', () => {
 
       if (generateResult.success) {
         const category1Items = generateResult.data.items.filter(
-          (item: any) => item.category_id === 1
+          (item) => item.category_id === 1
         );
         expect(category1Items.length).toBeGreaterThan(0);
 
@@ -373,8 +379,10 @@ describe('ChecklistService', () => {
       // Check all items in category 1
       await service.updateCategoryChecked(1, true);
 
-      const summary = await service.getCategorySummary();
-      const category1Summary = summary.find((s: any) => s.category_id === 1);
+      const result = await service.getCategorySummary();
+      expect(result.success).toBe(true);
+      const summary = result.success ? result.data : [];
+      const category1Summary = summary.find((s) => s.category_id === 1);
 
       expect(category1Summary).toBeDefined();
       if (category1Summary) {
