@@ -9,7 +9,8 @@
 Packing Checklist builds a packing list for your trip from a few quick questions: your dates, how
 you're travelling, the weather, your activities and whether you can do laundry. It works out how
 many of each item to bring, so long trips with a washing machine don't mean packing two weeks of
-clothes. Everything is stored in your browser; there's no account and nothing is uploaded.
+clothes. Everything is stored in your browser; there's no account and nothing is uploaded. You can
+install it on your phone or desktop for an app-like experience.
 
 You can use it here: https://packing.ribeirompl.com
 
@@ -32,7 +33,8 @@ You can use it here: https://packing.ribeirompl.com
   before anything is replaced
 - **Customisable Defaults**: About 110 built-in items, each with editable trip tags, quantity rule
   and phase
-- **Offline-First**: Data is stored locally in IndexedDB
+- **Offline-First and Installable**: Data is stored locally in IndexedDB, and the app can be
+  installed on your phone or desktop and used without a connection
 
 ## Screenshots
 
@@ -56,6 +58,25 @@ You can use it here: https://packing.ribeirompl.com
   or person, use a share link.
 - **One checklist at a time:** Generating or importing a checklist replaces the current one.
 - **Weather is entered manually:** The app doesn't look up forecasts; choose the weather you expect.
+
+## Installing the App
+
+### iOS Safari
+
+1. Open https://packing.ribeirompl.com in Safari
+2. Tap the Share button
+3. Select "Add to Home Screen"
+
+### Android Chrome
+
+1. Open https://packing.ribeirompl.com in Chrome
+2. Tap the menu (three dots)
+3. Select "Install app" or "Add to Home screen"
+
+### Desktop Chrome / Edge
+
+Click the install icon at the right of the address bar, or open the browser menu and choose
+"Install Packing Checklist".
 
 ## Developer Quick Start
 
@@ -140,7 +161,8 @@ packing/
 ## Technology Stack
 
 - **Framework**: Vue 3.5 with Composition API
-- **Build Tool**: Vite 8 with PWA plugin
+- **Build Tool**: Vite 8 with vite-plugin-pwa (service worker, manifest and icons generated from
+  `public/favicon.svg`)
 - **State Management**: Pinia 4
 - **Routing**: Vue Router 5 (hash mode)
 - **Database**: IndexedDB via Dexie.js 4

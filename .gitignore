@@ -6,10 +6,6 @@ dist/
 build/
 dev-dist/
 
-# Generated icons (built from icon.svg)
-public/icons/icon-192.png
-public/icons/icon-512.png
-public/icons/icon-maskable.png
 
 # Environment files
 .env

@@ -11,52 +11,28 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'robots.txt'],
+      // Generates the favicon, apple-touch-icon and manifest icons (incl. maskable) from the SVG,
+      // and injects the matching <link> tags into index.html
+      pwaAssets: {
+        image: 'public/favicon.svg',
+        preset: 'minimal-2023',
+        overrideManifestIcons: true,
+      },
+      includeAssets: ['robots.txt'],
       manifest: {
+        id: '/',
         name: 'Packing Checklist',
-        short_name: 'PackList',
-        description: 'Offline-first PWA for trip packing checklists',
-        theme_color: '#3b82f6',
-        background_color: '#ffffff',
+        short_name: 'Packing',
+        description: 'Build a packing list for your trip and tick it off as you pack',
+        start_url: '/',
+        scope: '/',
         display: 'standalone',
-        orientation: 'portrait',
-        icons: [
-          {
-            src: '/icons/icon-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: '/icons/icon-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
-          {
-            src: '/icons/icon-maskable-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-        ],
+        theme_color: '#2563eb',
+        background_color: '#f9fafb',
+        categories: ['travel', 'productivity', 'utilities'],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-        ],
       },
     }),
   ],
